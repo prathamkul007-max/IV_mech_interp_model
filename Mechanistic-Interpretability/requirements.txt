@@ -1,0 +1,7 @@
+torch==2.3.0
+numpy==1.26.4
+pandas==2.2.2
+matplotlib>=3.8
+seaborn>=0.13
+plotly>=5.20
+huggingface_hub==0.24.5
