@@ -10,6 +10,14 @@ def add_run_pretrain_opts(parser: argparse.ArgumentParser) -> None:
     _add_common_training_opts(parser)
     _add_ddp_training_opts(parser)
 
+def add_run_pretrain_iv_opts(parser: argparse.ArgumentParser) -> None:
+    """Options for training the options-IV forecasting model."""
+    _add_general_opts(parser)
+    _add_iv_dataset_opts(parser)
+    _add_iv_model_opts(parser)
+    _add_wandb_opts(parser)
+    _add_common_training_opts(parser)
+
 def add_run_pretrain_xla_opts(parser: argparse.ArgumentParser) -> None:
     """Options for pre-training model with XLA devices."""
     _add_general_opts(parser)
@@ -52,6 +60,90 @@ def _add_dataset_opts(parser: argparse.ArgumentParser) -> None:
         '--drop-last',
         help='Whether to drop the last incomplete batch',
         action='store_true',
+    )
+
+def _add_iv_dataset_opts(parser: argparse.ArgumentParser) -> None:
+    group = parser.add_argument_group('IV Dataset')
+    group.add_argument(
+        '--train-file',
+        type=str,
+        help='Path to the .npz file containing training windows',
+        default='options_iv_data/train.npz',
+    )
+    group.add_argument(
+        '--valid-file',
+        type=str,
+        help='Path to the .npz file containing validation windows',
+        default='options_iv_data/valid.npz',
+    )
+    group.add_argument(
+        '--scaler-file',
+        type=str,
+        help='Path to the JSON file containing feature scaler parameters',
+        default='options_iv_data/scaler.json',
+    )
+    group.add_argument(
+        '--drop-last',
+        help='Whether to drop the last incomplete batch',
+        action='store_true',
+    )
+
+def _add_iv_model_opts(parser: argparse.ArgumentParser) -> None:
+    group = parser.add_argument_group('IV Model')
+    group.add_argument(
+        '--num-features',
+        type=int,
+        help='Number of input features per timestep (overridden from --scaler-file if present)',
+        default=None,
+    )
+    group.add_argument(
+        '--num-targets',
+        type=int,
+        help='Number of target values per timestep (overridden from --scaler-file if present)',
+        default=7,
+    )
+    group.add_argument(
+        '--seq-length',
+        type=int,
+        help='Length of the input window (number of days of history)',
+        default=32,
+    )
+    group.add_argument(
+        '--d-model',
+        type=int,
+        help='Size of the embedding vectors',
+        default=128,
+    )
+    group.add_argument(
+        '--num-layers',
+        type=int,
+        help='Number of hidden layers',
+        default=4,
+    )
+    group.add_argument(
+        '--num-heads',
+        type=int,
+        help='Number of attention heads',
+        default=4,
+    )
+    group.add_argument(
+        '--d-ff',
+        type=int,
+        help='Intermediate size of the feed-forward layers',
+        default=512,
+    )
+    group.add_argument(
+        '--dropout',
+        type=float,
+        help='Dropout rate',
+        default=0.1,
+    )
+    group.add_argument(
+        '--activation',
+        type=str,
+        help='Which activation function to use',
+        choices=['relu', 'gelu'],
+        default='gelu',
     )
 
 def _add_model_opts(parser: argparse.ArgumentParser) -> None:
