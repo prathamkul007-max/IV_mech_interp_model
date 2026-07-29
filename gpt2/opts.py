@@ -15,8 +15,8 @@ def add_run_pretrain_iv_opts(parser: argparse.ArgumentParser) -> None:
     _add_general_opts(parser)
     _add_iv_dataset_opts(parser)
     _add_iv_model_opts(parser)
-    _add_wandb_opts(parser)
     _add_common_training_opts(parser)
+    _add_hub_opts(parser)
 
 def add_run_pretrain_xla_opts(parser: argparse.ArgumentParser) -> None:
     """Options for pre-training model with XLA devices."""
@@ -112,25 +112,25 @@ def _add_iv_model_opts(parser: argparse.ArgumentParser) -> None:
         '--d-model',
         type=int,
         help='Size of the embedding vectors',
-        default=128,
+        default=928,
     )
     group.add_argument(
         '--num-layers',
         type=int,
         help='Number of hidden layers',
-        default=4,
+        default=12,
     )
     group.add_argument(
         '--num-heads',
         type=int,
         help='Number of attention heads',
-        default=4,
+        default=8,
     )
     group.add_argument(
         '--d-ff',
         type=int,
         help='Intermediate size of the feed-forward layers',
-        default=512,
+        default=3712,
     )
     group.add_argument(
         '--dropout',
@@ -201,6 +201,29 @@ def _add_model_opts(parser: argparse.ArgumentParser) -> None:
         '--tie-weights',
         action='store_true',
         help='Whether to tie weights between input and output embeddings',
+    )
+
+def _add_hub_opts(parser: argparse.ArgumentParser) -> None:
+    group = parser.add_argument_group('Hugging Face Hub')
+    group.add_argument(
+        '--push-to-hub',
+        help='Push the final checkpoint and scaler to the Hugging Face Hub after training',
+        action='store_true',
+    )
+    group.add_argument(
+        '--hub-repo-id',
+        type=str,
+        help='Hugging Face Hub repo id to push to, e.g. "username/my-model" (required if --push-to-hub is set)',
+    )
+    group.add_argument(
+        '--hub-private',
+        help='Create the Hugging Face Hub repo as private',
+        action='store_true',
+    )
+    group.add_argument(
+        '--hf-token',
+        type=str,
+        help='Hugging Face Hub access token. If not provided, falls back to the HF_TOKEN environment variable',
     )
 
 def _add_wandb_opts(parser: argparse.ArgumentParser) -> None:

@@ -9,8 +9,6 @@ from contextlib import nullcontext
 import numpy as np
 from tqdm.autonotebook import tqdm
 
-import wandb
-
 import torch
 import torch.amp
 import torch.nn as nn
@@ -18,6 +16,7 @@ from torch.utils.data import DataLoader
 
 import gpt2.opts as opts
 import gpt2.utils as utils
+from gpt2.hub_utils import push_model_to_hub
 from gpt2.iv_dataset import IVDataset
 from gpt2.iv_model import IVModel, IVModelConfig
 from gpt2.meters import AverageMeter
@@ -63,18 +62,8 @@ def train_model(args: argparse.Namespace) -> None:
         drop_last=args.drop_last,
     )
 
-    # logging with wandb
-    wandb_run = None
-    if args.wandb_logging:
-        wandb_run = wandb.init(
-            project=args.wandb_project,
-            name=args.wandb_name,
-            config=vars(args),
-            tags=args.wandb_tags,
-            notes=args.wandb_notes,
-            id=args.wandb_resume_id,
-            resume='must' if args.wandb_resume_id is not None else None,
-        )
+    if args.push_to_hub and not args.hub_repo_id:
+        raise ValueError('--hub-repo-id is required when --push-to-hub is set')
 
     # training device
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -188,7 +177,7 @@ def train_model(args: argparse.Namespace) -> None:
     global_step = initial_step
     batch_loss = 0.0
     batch_fb_time = 0.0
-    wandb_accum_logs: list[dict] = []
+    last_checkpoint_path = None
     running_loss = AverageMeter('running_loss', device=device)
 
     model.train()
@@ -222,15 +211,6 @@ def train_model(args: argparse.Namespace) -> None:
                 scaler.update()
                 optimizer.zero_grad()
 
-                wandb_accum_logs.append({
-                    f'learning_rate/group_{group_id}': group_lr
-                    for group_id, group_lr in enumerate(lr_scheduler.get_last_lr())
-                })
-                wandb_accum_logs[-1].update({
-                    'loss/batch_loss': batch_loss,
-                    'step': global_step,
-                })
-
                 lr_scheduler.step()
                 running_loss.update(batch_loss)
 
@@ -238,25 +218,16 @@ def train_model(args: argparse.Namespace) -> None:
                     valid_results = eval_model(
                         model, device, criterion, validation_loader, args.valid_steps, autocast_context, scaler_params,
                     )
-                    wandb_accum_logs[-1].update({
-                        'loss/train': running_loss.average,
-                        'loss/valid': valid_results['loss'],
-                        'metrics/valid_rmse_unscaled': valid_results['rmse_unscaled'],
-                    })
+                    print(
+                        f'[step {global_step + 1}] '
+                        f'train_loss={running_loss.average:0.4f} '
+                        f'valid_loss={valid_results["loss"]:0.4f} '
+                        f'valid_rmse_unscaled={valid_results["rmse_unscaled"]:0.4f}'
+                    )
                     running_loss.reset()
 
-                if (
-                    len(wandb_accum_logs) >= args.wandb_logging_interval or
-                    (len(wandb_accum_logs) > 0 and global_step + 1 >= args.train_steps)
-                ):
-                    if wandb_run is not None:
-                        for log in wandb_accum_logs:
-                            log['loss/batch_loss'] = float(log['loss/batch_loss'])
-                            wandb_run.log(log)
-                    wandb_accum_logs = []
-
                 if (global_step + 1) % args.save_interval == 0:
-                    save_checkpoint(raw_model, optimizer, lr_scheduler, scaler, model_config, global_step + 1, checkpoints_dir, args)
+                    last_checkpoint_path = save_checkpoint(raw_model, optimizer, lr_scheduler, scaler, model_config, global_step + 1, checkpoints_dir, args)
 
                 train_iter.set_postfix({'loss': f'{batch_loss:0.4f}'})
                 batch_loss = 0.0
@@ -267,7 +238,18 @@ def train_model(args: argparse.Namespace) -> None:
                     break
 
         if global_step == args.train_steps and args.train_steps % args.save_interval != 0:
-            save_checkpoint(raw_model, optimizer, lr_scheduler, scaler, model_config, global_step, checkpoints_dir, args)
+            last_checkpoint_path = save_checkpoint(raw_model, optimizer, lr_scheduler, scaler, model_config, global_step, checkpoints_dir, args)
+
+    if args.push_to_hub:
+        if last_checkpoint_path is None:
+            raise ValueError('No checkpoint was saved during training; nothing to push to the Hub')
+        push_model_to_hub(
+            checkpoint_path=last_checkpoint_path,
+            scaler_file=args.scaler_file,
+            repo_id=args.hub_repo_id,
+            token=args.hf_token,
+            private=args.hub_private,
+        )
 
 
 def save_checkpoint(model, optimizer, lr_scheduler, scaler, model_config, global_step, checkpoints_dir, args):
@@ -283,6 +265,7 @@ def save_checkpoint(model, optimizer, lr_scheduler, scaler, model_config, global
     utils.ensure_num_saved_checkpoints(checkpoints_dir, 'iv_model', args.saved_checkpoint_limit)
     model_save_path = os.path.join(checkpoints_dir, f'iv_model-{global_step}.pt')
     torch.save(checkpoint_dict, model_save_path)
+    return model_save_path
 
 
 def main():

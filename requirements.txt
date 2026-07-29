@@ -8,3 +8,4 @@ tqdm==4.66.3
 datasets==2.20.0
 wandb==0.17.4
 tiktoken==0.7.0
+huggingface_hub==0.24.5
